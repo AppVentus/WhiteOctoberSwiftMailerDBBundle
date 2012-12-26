@@ -63,13 +63,13 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
     public function queueMessage(\Swift_Mime_Message $message)
     {
         $mailObject = new $this->entityClass;
-        $mailObject->setMessage(serialize($message));
+        $mailObject->setMessage($message);
         $mailObject->setStatus(EmailInterface::STATUS_READY);
         try {
             $this->em->persist($mailObject);
             $this->em->flush();
         } catch (\Exception $e) {
-            throw new \Swift_IoException("Unable to persist object for enqueuing message");
+            throw new \Swift_IoException("Unable to persist object for enqueuing message".$e);
         }
 
         return true;
@@ -104,9 +104,10 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
             $this->em->persist($email);
             $this->em->flush();
 
-            $message = unserialize($email->getMessage());
-            $count += $transport->send($message, $failedRecipients);
-            $this->em->remove($email);
+            $message = $email->getMessage();
+            $count += $transport->send($messagesage, $failedRecipients);
+            $email->setStatus(EmailInterface::STATUS_COMPLETE);
+            $this->em->persist($email);
             $this->em->flush();
 
             if ($this->getMessageLimit() && $count >= $this->getMessageLimit()) {
