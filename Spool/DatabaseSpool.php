@@ -105,8 +105,9 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
             $this->em->flush();
 
             $message = $email->getMessage();
-            $count += $transport->send($messagesage, $failedRecipients);
+            $count += $transport->send($message, $failedRecipients);
             $email->setStatus(EmailInterface::STATUS_COMPLETE);
+            $email->setSendDate(new \DateTime());
             $this->em->persist($email);
             $this->em->flush();
 
