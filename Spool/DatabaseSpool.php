@@ -16,8 +16,12 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
      * @var string
      */
     protected $entityClass;
+    /**
+     * @var sms sender service
+     */
+    protected $smsSender;
 
-    public function __construct(EntityManager $em, $entityClass)
+    public function __construct(EntityManager $em, $entityClass, $smsSender = null)
     {
         $this->em = $em;
 
@@ -27,6 +31,7 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
         }
 
         $this->entityClass = $entityClass;
+        $this->smsSender = $smsSender;
     }
 
     /**
@@ -53,6 +58,29 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
         return true;
     }
 
+    /**
+     * Queues a sms.
+     *
+     * @param $sms The sms to store
+     * @return boolean Whether the operation has succeeded
+     * @throws \Swift_IoException if the persist fails
+     */
+    public function queueSms($sms)
+    {
+        $mailObject = new $this->entityClass;
+        $mailObject->setBody($sms['body']);
+        $mailObject->setTo($sms['recipient']);
+        $mailObject->setType('sms');
+        $mailObject->setStatus(EmailInterface::STATUS_READY);
+        try {
+            $this->em->persist($mailObject);
+            $this->em->flush();
+        } catch (\Exception $e) {
+            throw new \Swift_IoException("Unable to persist object for enqueuing message".$e);
+        }
+
+        return true;
+    }
     /**
      * Queues a message.
      *
@@ -98,28 +126,55 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
 
         $failedRecipients = (array) $failedRecipients;
         $count = 0;
+        $countSms = 0;
+        $smsInSpool = false;
         $time = time();
         foreach ($emails as $email) {
-            $email->setStatus(EmailInterface::STATUS_PROCESSING);
-            $this->em->persist($email);
-            $this->em->flush();
+            if($email->getType()!='sms'){
+                $email->setStatus(EmailInterface::STATUS_PROCESSING);
+                $this->em->persist($email);
+                $this->em->flush();
+                $message = $email->getMessage();
+                $count += $transport->send($message, $failedRecipients);
+                $email->setStatus(EmailInterface::STATUS_COMPLETE);
+                $email->setSendDate(new \DateTime());
+                $this->em->persist($email);
+                $this->em->flush();
+                
+                if ($this->getMessageLimit() && $count >= $this->getMessageLimit()) {
+                    break;
+                }
 
-            $message = $email->getMessage();
-            $count += $transport->send($message, $failedRecipients);
-            $email->setStatus(EmailInterface::STATUS_COMPLETE);
-            $email->setSendDate(new \DateTime());
-            $this->em->persist($email);
-            $this->em->flush();
-
-            if ($this->getMessageLimit() && $count >= $this->getMessageLimit()) {
-                break;
-            }
-
-            if ($this->getTimeLimit() && (time() - $time) >= $this->getTimeLimit()) {
-                break;
+                if ($this->getTimeLimit() && (time() - $time) >= $this->getTimeLimit()) {
+                    break;
+                }
+            }else{
+                $smsInSpool = true;
             }
         }
+        if($smsInSpool){
 
-        return $count;
+            $this->smsSender->login();
+            foreach ($emails as $email) {
+                if($email->getType()=='sms'){
+                    $recipient = $email->getTo();
+                    $recipient = preg_replace("[^0-9]","",$recipient);
+                    if(preg_match('`^0[67][0-9]{8}$`',$recipient)){
+                        $recipient = "+33".substr($recipient, 1);
+                        $this->smsSender->sendMessage($recipient, $email->getBody(), array());
+                        $countSms++;
+                        $email->setStatus(EmailInterface::STATUS_COMPLETE);
+                        $email->setSendDate(new \DateTime());
+                        $this->em->persist($email);
+                        $this->em->flush();
+                    }
+                }
+                if ($this->getMessageLimit() && $countSms >= $this->getMessageLimit()) {
+                    break;
+                }
+            }
+            $this->smsSender->logout();
+        }
+        return $count+$countSms;
     }
 }
