@@ -1,6 +1,6 @@
 {
-    "name": "whiteoctober/swiftmailerdbbundle",
-    "description": "Database spooling for SwiftMailer",
+    "name": "appventus/swiftmailerdbbundle",
+    "description": "Database spooling for SwiftMailer with sms support",
     "keywords": ["swiftmailer", "doctrine", "spool"],
     "type": "symfony-bundle",
     "license": "MIT",
@@ -8,7 +8,11 @@
         {
             "name": "Rich Sage",
             "email": "rich.sage@gmail.com"
-        }
+        },
+        {
+            "name": "Paul Andrieux",
+            "email": "paul@appventus.com"
+        },
     ],
     "require": {
         "php": ">=5.3.3",
@@ -21,5 +25,5 @@
             "WhiteOctober\\SwiftMailerDBBundle": ""
          }
     },
-    "target-dir": "WhiteOctober/SwiftMailerDBBundle"
+    "target-dir": "AppVentus/SwiftMailerDBBundle"
 }
