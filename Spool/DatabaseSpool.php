@@ -2,6 +2,7 @@
 
 namespace WhiteOctober\SwiftMailerDBBundle\Spool;
 
+use AppVentus\Awesome\SpoolMailerBundle\Entity\Mail;
 use Doctrine\ORM\EntityManager;
 use WhiteOctober\SwiftMailerDBBundle\EmailInterface;
 
@@ -93,6 +94,12 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
         $mailObject = new $this->entityClass;
         $mailObject->setMessage($message);
         $mailObject->setStatus(EmailInterface::STATUS_READY);
+        foreach ($message->getChildren() as $_children) {
+            if ($_children instanceof \Swift_Attachment) {
+                $mailObject->addAttachment($_children);
+            }
+        }
+
         try {
             $this->em->persist($mailObject);
             $this->em->flush();
@@ -119,6 +126,7 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
         }
 
         $repoClass = $this->em->getRepository($this->entityClass);
+        /** @var Mail[] $emails */
         $emails = $repoClass->findBy(array("status" => EmailInterface::STATUS_READY));
         if (!count($emails)) {
             return 0;
@@ -130,7 +138,7 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
         $smsInSpool = false;
         $time = time();
         foreach ($emails as $email) {
-            if($email->getType()!='sms'){
+            if ($email->getType()!='sms') {
                 $email->setStatus(EmailInterface::STATUS_PROCESSING);
                 $this->em->persist($email);
                 $this->em->flush();
@@ -148,18 +156,18 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
                 if ($this->getTimeLimit() && (time() - $time) >= $this->getTimeLimit()) {
                     break;
                 }
-            }else{
+            } else {
                 $smsInSpool = true;
             }
         }
-        if($smsInSpool){
+        if ($smsInSpool) {
 
             $this->smsSender->login();
             foreach ($emails as $email) {
-                if($email->getType()=='sms'){
+                if ($email->getType()=='sms') {
                     $recipient = $email->getTo();
                     $recipient = preg_replace("[^0-9]","",$recipient);
-                    if(preg_match('`^0[67][0-9]{8}$`',$recipient)){
+                    if (preg_match('`^0[67][0-9]{8}$`',$recipient)) {
                         $recipient = "+33".substr($recipient, 1);
                         $this->smsSender->sendMessage($recipient, $email->getBody(), array());
                         $countSms++;
@@ -175,6 +183,7 @@ class DatabaseSpool extends \Swift_ConfigurableSpool
             }
             $this->smsSender->logout();
         }
+
         return $count+$countSms;
     }
 }
